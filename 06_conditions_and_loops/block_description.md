@@ -1,0 +1,1 @@
+In this block, the greeting takes place, a brief overview of the course is provided, and a small exchange occurs regarding who has how much experience with Python. There is nothing to program here yet.

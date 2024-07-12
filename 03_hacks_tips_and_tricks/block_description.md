@@ -1,0 +1,1 @@
+Here you will learn how to work efficiently with VS Code! Go through the Jupyter Notebook `exercise.ipynb` and complete the tasks.
