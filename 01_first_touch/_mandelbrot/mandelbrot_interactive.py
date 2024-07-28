@@ -52,7 +52,8 @@ class Mandelbrot:
         self._window = cv.namedWindow(self._window_name)
         cv.setMouseCallback(self._window_name, self._mouse_callback)
 
-        self._drawing_rectangle_event = threading.Event()
+        self._drawing_rectangle_zoom_in_event = threading.Event()
+        # self._drawing_rectangle_zoom_out_event = threading.Event() # TODO: implement zoom out
         self._calculate_mandelbrot_set_abort_flag = threading.Event()
         self._is_calculating_event = threading.Event()
         self._rect_init_x, self._rect_init_y = 0, 0
@@ -235,17 +236,17 @@ class Mandelbrot:
         #TODO: add zooming out with right mouse button
         if event == cv.EVENT_LBUTTONDOWN:
             self._calculate_mandelbrot_set_abort_flag.set()
-            self._drawing_rectangle_event.set()
+            self._drawing_rectangle_zoom_in_event.set()
             self._rect_init_x, self._rect_init_y = x, y
             self._rect_dx, self._rect_dy = 0, 0
 
         elif event == cv.EVENT_MOUSEMOVE:
-            if self._drawing_rectangle_event.is_set():
+            if self._drawing_rectangle_zoom_in_event.is_set():
                 self._draw_rectangle(x, y)
 
         elif event == cv.EVENT_RBUTTONUP:
-            if self._drawing_rectangle_event.is_set():
-                self._drawing_rectangle_event.clear()
+            if self._drawing_rectangle_zoom_in_event.is_set():
+                self._drawing_rectangle_zoom_in_event.clear()
                 self._repaint()
             else:
                 self._calculate_mandelbrot_set_abort_flag.set() #TODO: problem: will not abort since initial function call gets paused
@@ -254,8 +255,8 @@ class Mandelbrot:
                 self._repaint()
 
         elif event == cv.EVENT_LBUTTONUP:
-            if self._drawing_rectangle_event.is_set():
-                self._drawing_rectangle_event.clear()
+            if self._drawing_rectangle_zoom_in_event.is_set():
+                self._drawing_rectangle_zoom_in_event.clear()
                 if self._rect_dy != 0 and self._rect_dx != 0:
                     self._update_coordinates_from_rectangle()
                 self._calculate_mandelbrot_set()
@@ -437,9 +438,7 @@ class Mandelbrot:
         self._im_max = center_y + dy
         
 if __name__ == '__main__':
-    mb = Mandelbrot(600,600,1000)
-    mb.gamma = 0.7
-    mb.histogram_equalization_weight = 0.85
-    # mb.gamma = 1.75
-    # mb.histogram_equalization_weight = 0.0
+    mb = Mandelbrot(400,400,100)
+    mb.gamma = 1.75
+    mb.histogram_equalization_weight = 0.0
     mb.run()
