@@ -3,9 +3,14 @@ from time import perf_counter
 from datetime import datetime
 from pathlib import Path
 import multiprocessing
+from multiprocessing import sharedctypes
+from multiprocessing import shared_memory
+import threading
 
 import numpy as np
 import cv2 as cv
+
+global_lock = multiprocessing.Lock()
 
 def get_mandelbrot_iterations(c, z, max_iter):
     N = 10000
@@ -19,19 +24,29 @@ def get_mandelbrot_iterations(c, z, max_iter):
     return float(max_iter)
 
 def get_mandelbrot_iterations_image(params):
-    col_coords, row_coords, z, max_iter = params
+    shared_array_base, shape, col_index, col_coords, row_coords, z, max_iter = params
+    global_image = np.ndarray(shape, dtype=np.uint8, buffer=shared_array_base.buf)
     iteration_image = np.zeros((len(row_coords), len(col_coords)), dtype=np.float16)
+    t_0 = perf_counter()
+    last_i = 0
     for i, x in enumerate(col_coords):
         for j, y in enumerate(row_coords):
             c = complex(x, y)
             iterations = get_mandelbrot_iterations(c, z, max_iter)
             iteration_image[j,i] = iterations
+        if perf_counter() - t_0 > 0.05:
+            t_0 = perf_counter()
+            last_i = i
+            preview_brighntess = (iteration_image[:, :i] / max_iter * 255).astype(np.uint8)
+            with global_lock:
+                global_image[:, col_index:col_index + i] = preview_brighntess
+    global_image[:, col_index+last_i:col_index + len(col_coords)] = (iteration_image[:, last_i:] / max_iter * 255).astype(np.uint8)
     return iteration_image
 
 class Mandelbrot:
 
     def __init__(self, height: int = 480, width: int = 640, max_iter: int = 50):
-        self.parallel_processing = False
+        self.parallel_processing = True
         self._n_cores = multiprocessing.cpu_count()
 
         self.invert_in_set_color = False
@@ -52,12 +67,14 @@ class Mandelbrot:
         self._window = cv.namedWindow(self._window_name)
         cv.setMouseCallback(self._window_name, self._mouse_callback)
 
-        self._drawing_rectangle_zoom_in_event = threading.Event()
-        # self._drawing_rectangle_zoom_out_event = threading.Event() # TODO: implement zoom out
-        self._calculate_mandelbrot_set_abort_flag = threading.Event()
-        self._is_calculating_event = threading.Event()
+        self._drawing_rectangle_zoom_in_event = multiprocessing.Event()
+        self._drawing_rectangle_zoom_out_event = multiprocessing.Event()
+        self._calculate_mandelbrot_set_abort_flag = multiprocessing.Event()
+        self._is_calculating_event = multiprocessing.Event()
         self._rect_init_x, self._rect_init_y = 0, 0
         self._rect_dx, self._rect_dy = 0, 0
+
+        self._history: list[list[float, float, float, float, np.ndarray]] = []        
 
         self._middle_mousebutton_states = [
             'change_max_iter',
@@ -69,17 +86,26 @@ class Mandelbrot:
         self.middle_mousebutton_state = 0
 
     def run(self):
+        self._repaint()
+        self._print_help()
         self._calculate_mandelbrot_set()
+
         while True:
             key = cv.waitKey(0) & 0xFF
             if key == ord('q'):
-                break
+                break            
+            if key == ord(' '):
+                self._print_help()
             if key == ord('b'):
                 self.invert_in_set_color = not self.invert_in_set_color
                 self._set_in_set_color()
                 self._repaint()
             if key == ord('r'):
+                self._re_min, self._re_max, self._im_min, self._im_max = self._init_coordinates
+                self._adjust_coordinates_to_image_ratio()
+                self._history.clear()
                 self._calculate_mandelbrot_set()
+                print('Reset')
             if key == ord('g'):
                 self.middle_mousebutton_state = self._middle_mousebutton_states.index('change_gamma')
                 self._print_mousebutton_state()
@@ -139,9 +165,34 @@ class Mandelbrot:
 
         cv.destroyAllWindows()
 
+    def _print_help(self):
+        print()
+        print('Available commands:')
+        print('space: show help')
+        print('q: quit')
+        print('p: print current position and settings')
+        print('b: invert color of points in the mandelbrot set')
+        print('r: reset coordinates to default')
+        print('m: toggle parallel / single core processing')
+        print('s: save image and current settings')
+        print('l: load settings')
+        print()
+        print('Settings (scroll up/down to change the value):')
+        print('g: change gamma')
+        print('h: change histogram equalization weight')
+        print('w: change resolution width')
+        print('e: change resolution height')
+        print('i: change maxximum number of iterations')
+        print()
+        self._print_mousebutton_state()
+        print()
+
     def _repaint(self):
         cv.imshow(self._window_name, self._image)
         cv.waitKey(1)
+
+    def _update_history(self):
+        self._history.append([self._re_min, self._re_max, self._im_min, self._im_max, self._iteration_image.copy()])
 
     def _set_in_set_color(self):
         mask = self._iteration_image == self.max_iter
@@ -174,6 +225,7 @@ class Mandelbrot:
                 for j, y in enumerate(row_coords):
                     if self._calculate_mandelbrot_set_abort_flag.is_set():
                         self._is_calculating_event.clear()
+                        print()
                         return
                     c = complex(x, y)
                     iterations = self.iterations_in_mandelbrot_set(c, self._z, self.max_iter)
@@ -188,23 +240,34 @@ class Mandelbrot:
             n_cols_per_core = self.width // self._n_cores
             col_coords_clipped = col_coords[:self._n_cores * n_cols_per_core]
             col_coords_split = [col_coords_clipped[i:i+n_cols_per_core] for i in range(0, len(col_coords_clipped), n_cols_per_core)]
+            image_indices = [i for i in range(0, len(col_coords_clipped), n_cols_per_core)]
             if len(col_coords) > self._n_cores * n_cols_per_core:
                 col_coords_split[-1] = np.append(col_coords_split[-1], col_coords[self._n_cores * n_cols_per_core:])
+                image_indices.append(self._n_cores * n_cols_per_core)
 
             sum_of_lengths = sum(len(col_coords) for col_coords in col_coords_split)
             assert sum_of_lengths == len(col_coords), f'{sum_of_lengths} != {len(col_coords)}'
-
-            with multiprocessing.Pool(self._n_cores) as pool:
-                params  = [(col_coords, row_coords, self._z, self.max_iter) for col_coords in col_coords_split]
-                results = pool.map(get_mandelbrot_iterations_image, params)
             
-            i = 0
-            for col_coords, result in zip(col_coords_split, results):
-                self._iteration_image[:, i:i+len(col_coords)] = result
-                mask = result == self.max_iter
-                brightness = (result / self.max_iter * 255).astype(np.uint8)
-                brightness[mask] = 0 if self.invert_in_set_color else 255 
-                i += len(col_coords)
+            shared_array_base =  shared_memory.SharedMemory(create=True, size=self.height * self.width)
+            shared_array_np = np.ndarray((self.height, self.width), dtype=np.uint8, buffer=shared_array_base.buf)
+            def multiprocess_image_calculation():
+                with multiprocessing.Pool(self._n_cores) as pool:
+                    params  = [(shared_array_base, (self.height, self.width), i, col_coords, row_coords, self._z, self.max_iter) for (i, col_coords) in zip(image_indices, col_coords_split)]
+                    results = pool.map(get_mandelbrot_iterations_image, params)
+                i = 0
+                for col_coords, result in zip(col_coords_split, results):
+                    self._iteration_image[:, i:i+len(col_coords)] = result
+                    mask = result == self.max_iter
+                    brightness = (result / self.max_iter * 255).astype(np.uint8)
+                    brightness[mask] = 0 if self.invert_in_set_color else 255 
+                    i += len(col_coords)
+            thread = threading.Thread(target=multiprocess_image_calculation)
+            thread.start()
+            while thread.is_alive():
+                with global_lock:
+                    cv.imshow(self._window_name, shared_array_np)
+                    cv.waitKey(1)
+            
         self._colorize_image()
         print(f'\r{" " * 50}\r100% ({perf_counter() - global_t_0:.2f}s)')
         self._print_mousebutton_state()
@@ -214,31 +277,37 @@ class Mandelbrot:
     def _colorize_image(self):
         min_iter = self._iteration_image.min()
         max_iter = self._iteration_image.max()
-        normalized_smooth_values = (self._iteration_image - min_iter) / (max_iter - min_iter)
-        
-        # histogram_equalization'
-        hist, bins = np.histogram(normalized_smooth_values, bins=256, density=True)
-        cdf = hist.cumsum()
-        cdf = (cdf - cdf.min()) / (cdf[-1] - cdf.min())
-        new_values = np.interp(normalized_smooth_values, bins[:-1], cdf)
-        new_values = self.histogram_equalization_weight * new_values + (1 - self.histogram_equalization_weight) * normalized_smooth_values
+        if min_iter == max_iter:
+            self._image[:,:,:] = 255
+        else:
+            normalized_smooth_values = (self._iteration_image - min_iter) / (max_iter - min_iter)
+            
+            # histogram_equalization'
+            hist, bins = np.histogram(normalized_smooth_values, bins=256, density=True)
+            cdf = hist.cumsum()
+            cdf = (cdf - cdf.min()) / (cdf[-1] - cdf.min())
+            new_values = np.interp(normalized_smooth_values, bins[:-1], cdf)
+            new_values = self.histogram_equalization_weight * new_values + (1 - self.histogram_equalization_weight) * normalized_smooth_values
 
-        # gamma correction
-        new_values = new_values ** (1 / self.gamma)
+            # gamma correction
+            new_values = new_values ** (1 / self.gamma)
 
-        self._image[:,:,:] = new_values[:,:,None] * 255
+            self._image[:,:,:] = new_values[:,:,None] * 255
+
         if self.invert_in_set_color:
             self._set_in_set_color()
         self._repaint()
         return
 
     def _mouse_callback(self, event, x, y, flags, param):
-        #TODO: add zooming out with right mouse button
         if event == cv.EVENT_LBUTTONDOWN:
             self._calculate_mandelbrot_set_abort_flag.set()
             self._drawing_rectangle_zoom_in_event.set()
             self._rect_init_x, self._rect_init_y = x, y
             self._rect_dx, self._rect_dy = 0, 0
+
+        if event == cv.EVENT_RBUTTONDOWN:
+            self._calculate_mandelbrot_set_abort_flag.set()
 
         elif event == cv.EVENT_MOUSEMOVE:
             if self._drawing_rectangle_zoom_in_event.is_set():
@@ -249,17 +318,24 @@ class Mandelbrot:
                 self._drawing_rectangle_zoom_in_event.clear()
                 self._repaint()
             else:
-                self._calculate_mandelbrot_set_abort_flag.set() #TODO: problem: will not abort since initial function call gets paused
-                self._re_min, self._re_max, self._im_min, self._im_max = self._init_coordinates
-                self._calculate_mandelbrot_set()
-                self._repaint()
+                while self._is_calculating_event.is_set():
+                    pass
+                if len(self._history) > 0:
+                    self._re_min, self._re_max, self._im_min, self._im_max, _iteration_image = self._history[-1]
+                    self.height, self.width = _iteration_image.shape # This will call the height and width setter and overwrite self._iteration_image
+                    self._iteration_image = _iteration_image
+                    self._colorize_image()
+                    self._history.pop()
 
         elif event == cv.EVENT_LBUTTONUP:
             if self._drawing_rectangle_zoom_in_event.is_set():
                 self._drawing_rectangle_zoom_in_event.clear()
                 if self._rect_dy != 0 and self._rect_dx != 0:
+                    self._update_history()
                     self._update_coordinates_from_rectangle()
-                self._calculate_mandelbrot_set()
+                    self._calculate_mandelbrot_set()
+                else:
+                    self._calculate_mandelbrot_set()
                 self._repaint()
 
         elif event == cv.EVENT_MOUSEWHEEL:
@@ -308,7 +384,7 @@ class Mandelbrot:
                     else:
                         self.gamma -= delta
                 self._colorize_image()
-                print(f'gamma: {self.gamma}')
+                print(f'gamma: {self.gamma:.2f}')
             
             elif self._middle_mousebutton_states[self.middle_mousebutton_state] == 'change_histogram_equalization_weight':
                 delta = 0.05
@@ -323,7 +399,7 @@ class Mandelbrot:
                     else:
                         self.histogram_equalization_weight -= delta
                 self._colorize_image()
-                print(f'histogram_equalization_weight: {self.histogram_equalization_weight}')
+                print(f'histogram_equalization_weight: {self.histogram_equalization_weight:.2f}')
 
         elif event == cv.EVENT_MBUTTONUP:
             self.middle_mousebutton_state += 1
@@ -331,7 +407,7 @@ class Mandelbrot:
             self._print_mousebutton_state()
     
     def _print_mousebutton_state(self):
-        print(f'middle_mousebutton_state: {self._middle_mousebutton_states[self.middle_mousebutton_state]}')
+        print(f'current setting: {self._middle_mousebutton_states[self.middle_mousebutton_state]}')
 
     def _draw_rectangle(self, x, y):
         image_copy = self._image.copy()
@@ -405,6 +481,16 @@ class Mandelbrot:
         self._adjust_image_size()
         self._adjust_coordinates_to_image_ratio()
 
+    def _adjust_image_size(self):
+        self._iteration_image = np.zeros((self.height, self.width), dtype=np.float32)
+        self._image = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+
+    def _adjust_coordinates_to_image_ratio(self):
+        center_y = (self._im_max + self._im_min) / 2
+        ratio_image = self.width / self.height
+        dy = (self._re_max - self._re_min) / ratio_image / 2
+        self._im_min = center_y - dy
+        self._im_max = center_y + dy
     
     @property
     def height(self):
@@ -425,20 +511,14 @@ class Mandelbrot:
         self.__width = value
         self._adjust_image_size()
         self._adjust_coordinates_to_image_ratio()
-
-    def _adjust_image_size(self):
-        self._iteration_image = np.zeros((self.height, self.width), dtype=np.float32)
-        self._image = np.zeros((self.height, self.width, 3), dtype=np.uint8)
-
-    def _adjust_coordinates_to_image_ratio(self):
-        center_y = (self._im_max + self._im_min) / 2
-        ratio_image = self.width / self.height
-        dy = (self._re_max - self._re_min) / ratio_image / 2
-        self._im_min = center_y - dy
-        self._im_max = center_y + dy
         
 if __name__ == '__main__':
     mb = Mandelbrot(400,400,100)
+    # mb._re_min = -0.74364386269 - 0.00000013526 / 2
+    # mb._re_max = -0.74364386269 + 0.00000013526 / 2
+    # mb._im_min = 0.13182590271 - 0.00000013526 / 2
+    # mb._im_max = 0.13182590271 + 0.00000013526 / 2
+    # mb._adjust_coordinates_to_image_ratio()
     mb.gamma = 1.75
     mb.histogram_equalization_weight = 0.0
     mb.run()
