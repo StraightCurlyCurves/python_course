@@ -24,17 +24,21 @@ def get_mandelbrot_iterations(c, z, max_iter):
     return float(max_iter)
 
 def get_mandelbrot_iterations_image(params):
-    shared_array_base, shape, col_index, col_coords, row_coords, z, max_iter = params
+    abort_flag, shared_array_base, shape, col_index, col_coords, row_coords, z, max_iter = params
+    # col_coords, row_coords, z, max_iter = params
     global_image = np.ndarray(shape, dtype=np.uint8, buffer=shared_array_base.buf)
+    abort_flag_np = np.ndarray(1, dtype=np.uint8, buffer=abort_flag.buf)
     iteration_image = np.zeros((len(row_coords), len(col_coords)), dtype=np.float16)
     t_0 = perf_counter()
     last_i = 0
     for i, x in enumerate(col_coords):
         for j, y in enumerate(row_coords):
+            if abort_flag_np[0] == 1:
+                return iteration_image
             c = complex(x, y)
             iterations = get_mandelbrot_iterations(c, z, max_iter)
             iteration_image[j,i] = iterations
-        if perf_counter() - t_0 > 0.05:
+        if perf_counter() - t_0 > 0.1:
             t_0 = perf_counter()
             last_i = i
             preview_brighntess = (iteration_image[:, :i] / max_iter * 255).astype(np.uint8)
@@ -222,7 +226,7 @@ class Mandelbrot:
         col_coords = np.linspace(self._re_min, self._re_max, self.width)
         if not self.parallel_processing:
             for i, x in enumerate(col_coords):
-                for j, y in enumerate(row_coords):
+                for j, y in enumerate(row_coords):     
                     if self._calculate_mandelbrot_set_abort_flag.is_set():
                         self._is_calculating_event.clear()
                         print()
@@ -250,9 +254,12 @@ class Mandelbrot:
             
             shared_array_base =  shared_memory.SharedMemory(create=True, size=self.height * self.width)
             shared_array_np = np.ndarray((self.height, self.width), dtype=np.uint8, buffer=shared_array_base.buf)
+            abort_flag = shared_memory.SharedMemory(create=True, size=1)
+            abort_flag_np = np.ndarray(1, dtype=np.uint8, buffer=abort_flag.buf)
+            abort_flag_np[0] = False
             def multiprocess_image_calculation():
                 with multiprocessing.Pool(self._n_cores) as pool:
-                    params  = [(shared_array_base, (self.height, self.width), i, col_coords, row_coords, self._z, self.max_iter) for (i, col_coords) in zip(image_indices, col_coords_split)]
+                    params  = [(abort_flag, shared_array_base, (self.height, self.width), i, col_coords, row_coords, self._z, self.max_iter) for (i, col_coords) in zip(image_indices, col_coords_split)]
                     results = pool.map(get_mandelbrot_iterations_image, params)
                 i = 0
                 for col_coords, result in zip(col_coords_split, results):
@@ -264,10 +271,13 @@ class Mandelbrot:
             thread = threading.Thread(target=multiprocess_image_calculation)
             thread.start()
             while thread.is_alive():
-                with global_lock:
-                    cv.imshow(self._window_name, shared_array_np)
-                    cv.waitKey(1)
-            
+                cv.imshow(self._window_name, shared_array_np)
+                key = cv.waitKey(1)
+                if key == ord('c') or self._calculate_mandelbrot_set_abort_flag.is_set():
+                    abort_flag_np[0] = 1
+                    self._is_calculating_event.clear()
+                    thread.join()
+                    break           
         self._colorize_image()
         print(f'\r{" " * 50}\r100% ({perf_counter() - global_t_0:.2f}s)')
         self._print_mousebutton_state()
@@ -514,11 +524,11 @@ class Mandelbrot:
         
 if __name__ == '__main__':
     mb = Mandelbrot(400,400,100)
-    # mb._re_min = -0.74364386269 - 0.00000013526 / 2
-    # mb._re_max = -0.74364386269 + 0.00000013526 / 2
-    # mb._im_min = 0.13182590271 - 0.00000013526 / 2
-    # mb._im_max = 0.13182590271 + 0.00000013526 / 2
-    # mb._adjust_coordinates_to_image_ratio()
+    mb._re_min = -0.74364386269 - 0.00000013526 / 2
+    mb._re_max = -0.74364386269 + 0.00000013526 / 2
+    mb._im_min = 0.13182590271 - 0.00000013526 / 2
+    mb._im_max = 0.13182590271 + 0.00000013526 / 2
+    mb._adjust_coordinates_to_image_ratio()
     mb.gamma = 1.75
     mb.histogram_equalization_weight = 0.0
     mb.run()
