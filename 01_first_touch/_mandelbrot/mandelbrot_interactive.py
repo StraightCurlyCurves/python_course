@@ -25,7 +25,6 @@ def get_mandelbrot_iterations(c, z, max_iter):
 
 def get_mandelbrot_iterations_image(params):
     abort_flag, shared_array_base, shape, col_index, col_coords, row_coords, z, max_iter = params
-    # col_coords, row_coords, z, max_iter = params
     global_image = np.ndarray(shape, dtype=np.uint8, buffer=shared_array_base.buf)
     abort_flag_np = np.ndarray(1, dtype=np.uint8, buffer=abort_flag.buf)
     iteration_image = np.zeros((len(row_coords), len(col_coords)), dtype=np.float16)
@@ -524,11 +523,11 @@ class Mandelbrot:
         
 if __name__ == '__main__':
     mb = Mandelbrot(400,400,100)
-    mb._re_min = -0.74364386269 - 0.00000013526 / 2
-    mb._re_max = -0.74364386269 + 0.00000013526 / 2
-    mb._im_min = 0.13182590271 - 0.00000013526 / 2
-    mb._im_max = 0.13182590271 + 0.00000013526 / 2
-    mb._adjust_coordinates_to_image_ratio()
+    # mb._re_min = -0.74364386269 - 0.00000013526 / 2
+    # mb._re_max = -0.74364386269 + 0.00000013526 / 2
+    # mb._im_min = 0.13182590271 - 0.00000013526 / 2
+    # mb._im_max = 0.13182590271 + 0.00000013526 / 2
+    # mb._adjust_coordinates_to_image_ratio()
     mb.gamma = 1.75
     mb.histogram_equalization_weight = 0.0
     mb.run()
