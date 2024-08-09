@@ -14,7 +14,7 @@ def iterations_in_mandelbrot_set(c, z, max_iter):
 def mandelbrot_set(width, height, x_min=None, x_max=None, y_min=None, y_max=None):
     mandelbrot = np.zeros((height, width), dtype=np.uint8)
     z = 0
-    max_iter = 50
+    max_iter = 120
 
     if x_min is None or x_max is None or y_min is None or y_max is None:
         x_min, x_max, y_min, y_max = -2.0, 2.0, height / width * -2.0, height / width * 2.0
@@ -24,7 +24,7 @@ def mandelbrot_set(width, height, x_min=None, x_max=None, y_min=None, y_max=None
             c = complex(x / width * (x_max - x_min) + x_min,
                          y / height * (y_max - y_min) + y_min)
             iterations = iterations_in_mandelbrot_set(c, z, max_iter)
-            if True:
+            if False:
                 brightness = 0 if iterations == max_iter else int(min(iterations, max_iter) / max_iter * 255)
             else:
                 brightness = int(min(iterations, max_iter) / max_iter * 255)
