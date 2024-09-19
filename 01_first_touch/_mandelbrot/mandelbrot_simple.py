@@ -24,10 +24,10 @@ def mandelbrot_set(width, height, x_min=None, x_max=None, y_min=None, y_max=None
             c = complex(x / width * (x_max - x_min) + x_min,
                          y / height * (y_max - y_min) + y_min)
             iterations = iterations_in_mandelbrot_set(c, z, max_iter)
+            brightness = int(min(iterations, max_iter) / max_iter * 255)
             if False:
-                brightness = 0 if iterations == max_iter else int(min(iterations, max_iter) / max_iter * 255)
-            else:
-                brightness = int(min(iterations, max_iter) / max_iter * 255)
+                if iterations == max_iter :
+                    brightness = 0 # black if in the set
             mandelbrot[y, x] = brightness
         if x % 50 == 0:
             cv.imshow(WINDOW_NAME, mandelbrot)
