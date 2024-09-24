@@ -1,0 +1,5 @@
+numpy
+matplotlib
+pyqt6
+opencv-contrib-python
+numba

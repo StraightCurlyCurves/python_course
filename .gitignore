@@ -1,5 +1,6 @@
 images/
 _*.*py*
+_*.md
 *.pptx
 
 # Byte-compiled / optimized / DLL files

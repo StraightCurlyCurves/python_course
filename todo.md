@@ -1,0 +1,7 @@
+- more examples in first touch
+- more matplotlib?
+- open cv module
+- pyqt module
+- plitsch platsch exercise
+- scope
+- file handling
