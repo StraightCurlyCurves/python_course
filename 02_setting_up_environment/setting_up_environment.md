@@ -1,4 +1,4 @@
-# Install Python and IDE (Integrated Development Environment) and Git
+# Install Python and IDE (Integrated Development Environment)
 
 To start with Python, the initial step is installing the Python interpreter. This enables the execution of Python (code) directly in the terminal or through scripts created with any text editor, including those provided by the operating system.
 
