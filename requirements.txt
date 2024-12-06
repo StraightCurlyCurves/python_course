@@ -3,3 +3,5 @@ matplotlib
 pyqt6
 opencv-contrib-python
 numba
+ipywidgets
+mpl_interactions

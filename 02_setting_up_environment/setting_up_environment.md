@@ -53,14 +53,47 @@ py path/to/python_file.py
 ```
 
 
+### Manage multiple Python versions with the Python Launcher (Windows only)
 
-### For Linux
+The `py` command doesn't directly call `python.exe`. Instead, it invokes the Python Launcher, which is included by default when installing Python from [python.org](https://www.python.org) on Windows. The Python Launcher tracks the different Python versions installed on the system and links the `py` command to a default version of Python.
 
-You will figure it out...
+To see the installed versions and the default one (*), type:
 
-### For MacOS
+```
+py -0p
+```
+Output:
+```
+-V:3.12 *        C:\Users\<username>\AppData\Local\Programs\Python\Python312\python.exe
+-V:3.11          C:\Users\<username>\AppData\Local\Programs\Python\Python311\python.exe
+-V:3.9           C:\Users\<username>\AppData\Local\Programs\Python\Python39\python.exe
+```
 
+To start a specific Python version or execute a script with a specific version, type:
 
+```
+py -3.xx path/to/python_file.py
+```
+
+To change the default Python version, type the following in a terminal with admin rights (open terminal as administrator):
+
+```
+setx PY_PYTHON 3.xx /M
+```
+
+Restart the terminal and check with `py -0` if the default has changed. If not, there might be a `py.ini` file in the launcher folder or in your user's home directory, and you will need to change the version in there manually, as this file has a higher precedence than the system variable.
+
+### Pip with mutliple Python versions
+
+When you use `pip` to install packages (see chapter `pip` in `modules`), it always uses the `pip.exe` found first in the system's PATH environment variable. This means that packages are installed only for the Python version associated with that `pip.exe`, regardless of the interpreter selected in Visual Studio Code (which only affects the execution of Python files). However, if you have a virtual environment activated in the terminal, pip will install packages for the Python version of that virtual environment, but that is a different topic.
+
+To install a package for a specific Python version, type:
+
+```
+py -3.xx -m pip install <package_name>
+```
+
+To change the default pip version, modify the system's PATH environment variables by moving the Python Scripts directory of the desired Python version to the top of the list. This ensures that the corresponding pip.exe is found first when executing pip commands.
 
 ## Install and setup Visual Studio Code
 
