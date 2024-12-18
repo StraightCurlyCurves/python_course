@@ -1,5 +1,3 @@
-- dictionaries (get function!)
-- return operator (tuple, abort function, return stuff)
 - scope
 - more examples in first touch
 - open cv module

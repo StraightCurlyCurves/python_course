@@ -62,7 +62,7 @@ To see the installed versions and the default one (*), type:
 ```
 py -0p
 ```
-Output:
+Example output:
 ```
 -V:3.12 *        C:\Users\<username>\AppData\Local\Programs\Python\Python312\python.exe
 -V:3.11          C:\Users\<username>\AppData\Local\Programs\Python\Python311\python.exe
