@@ -1,3 +1,5 @@
+- maybe put loops in "python basics" after data types, since some exercises and examples until the current position of the loops chapter use loops
+- type hinting
 - scope
 - more examples in first touch
 - open cv module

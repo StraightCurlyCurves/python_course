@@ -1,1 +1,0 @@
-Here you find some python scripts which do cool stuff! Run them and figure out how they work, so that you can extend them according to the task given inside the scripts.
