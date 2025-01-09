@@ -2,27 +2,22 @@ import numpy as np
 import cv2 as cv
 
 # generate an image with a black background
-img = np.zeros((200,300,3), dtype=np.uint16)
+img = np.zeros((200,300,3), dtype=np.uint8)
 
-# copy the original black image 
-img_clear = img.copy()
-img_clear[:,:,:] = 127*255
+# create the visible image that will be used to hide the secret image
+img_public = img.copy()
+img_public[:,:,:] = 127 # gray 16-bit image
 
-img_clear_noise = img.copy()
-# noise = np.random.randint(0, 255**2, img_clear_noise.shape[:2])
-noise = np.random.randint(0, 255**2, img_clear_noise.shape)
-img_clear_noise[:,:,:] = noise
-# img_clear_noise[:,:,0] = noise
-# img_clear_noise[:,:,1] = noise
-# img_clear_noise[:,:,2] = noise
+# create a visible image with noise
+img_public_noise = np.random.randint(0, 255, img.shape)
 
+# create the secret image that will be hidden in the visible image
+img_private = img.copy()
+img_private[:,:,2] = 255
+img_private[40:160, 130:170, :] = 255
+img_private[80:120, 90:210, :] = 255
 
-img_secret = img.copy()
-img_secret[:,:,2] = 255*255
-img_secret[40:160, 130:170, :] = 255*255
-img_secret[80:120, 90:210, :] = 255*255
-
-cv.imwrite("img_clear.png", img_clear)
-cv.imwrite("img_clear_noise.png", img_clear_noise)
-cv.imwrite("img_secret.png", img_secret)
-# cv.imwrite("img_secret_2.png", img_secret2)
+# save the images
+cv.imwrite("img_public.png", img_public)
+cv.imwrite("img_public_noise.png", img_public_noise)
+cv.imwrite("img_private.png", img_private)
