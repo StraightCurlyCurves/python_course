@@ -53,7 +53,9 @@ py path/to/python_file.py
 ```
 
 
-### Manage multiple Python versions with the Python Launcher (Windows only)
+### Manage multiple Python versions with the Python Launcher
+
+For Linux / macOS, the python launcher has to be installed seperately. Follow the instructions here: https://python-launcher.app/install/
 
 The `py` command doesn't directly call `python.exe`. Instead, it invokes the Python Launcher, which is included by default when installing Python from [python.org](https://www.python.org) on Windows. The Python Launcher tracks the different Python versions installed on the system and links the `py` command to a default version of Python.
 
